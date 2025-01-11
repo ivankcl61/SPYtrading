@@ -1,0 +1,110 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Use a non-interactive backend
+import matplotlib.pyplot as plt
+
+# Fetch historical market data for SPY (5 years)
+spy = yf.Ticker("SPY")
+data = spy.history(period="5y")  # Fetch 5 years of data
+
+
+# Calculate RSI
+def calculate_rsi(prices, period=14):
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+
+    return rsi
+
+
+# Calculate RSI and add it to the DataFrame
+data['RSI'] = calculate_rsi(data['Close'])
+
+# Initialize variables for trading logic
+initial_capital = 1000000
+capital = initial_capital
+position_size = 0
+
+# Define trading parameters
+rsi_buy_threshold = 35
+rsi_sell_threshold = 55
+rsi_short_threshold = 75
+
+# Lists to store buy/sell signals for visualization
+buy_signals = []
+sell_signals = []
+short_signals = []
+cover_signals = []
+
+for i in range(len(data)):
+    current_rsi = data['RSI'].iloc[i]
+    current_price = data['Close'].iloc[i]
+
+    # Buy condition (RSI <= 35)
+    if current_rsi <= rsi_buy_threshold and position_size == 0:
+        position_size = capital * 0.10 / current_price
+        capital -= position_size * current_price
+        buy_signals.append(data.index[i])
+        print(f"Buying {position_size} shares at {current_price} on {data.index[i]}")
+
+    # Sell condition (RSI >= 55) when holding a position
+    elif current_rsi >= rsi_sell_threshold and position_size > 0:
+        capital += position_size * current_price
+        sell_signals.append(data.index[i])
+        print(f"Selling {position_size} shares at {current_price} on {data.index[i]}")
+        position_size = 0
+
+    # Short condition (RSI >= 75)
+    elif current_rsi >= rsi_short_threshold and position_size == 0:
+        position_size = -capital * 0.10 / current_price
+        capital += -position_size * current_price
+        short_signals.append(data.index[i])
+        print(f"Shorting {abs(position_size)} shares at {current_price} on {data.index[i]}")
+
+    # Cover condition (RSI <= 55) when holding a short position
+    elif current_rsi <= rsi_sell_threshold and position_size < 0:
+        capital += abs(position_size) * current_price
+        cover_signals.append(data.index[i])
+        print(f"Covers {abs(position_size)} shares at {current_price} on {data.index[i]}")
+        position_size = 0
+
+# Final capital after trading
+final_capital = capital + (position_size * data['Close'].iloc[-1] if position_size != 0 else 0)
+print(f"Final Capital: ${final_capital:.2f}")
+
+# Visualization of results
+
+# Create a figure with two subplots: one for price and one for RSI
+fig, (ax1, ax2) = plt.subplots(2, figsize=(14, 10), sharex=True)
+
+# Plot SPY price and buy/sell signals
+ax1.plot(data.index, data['Close'], label='SPY Price', color='blue')
+ax1.scatter(buy_signals, data['Close'][buy_signals], marker='^', color='green', label='Buy Signal', s=100)
+ax1.scatter(sell_signals, data['Close'][sell_signals], marker='v', color='red', label='Sell Signal', s=100)
+ax1.scatter(short_signals, data['Close'][short_signals], marker='x', color='orange', label='Short Signal', s=100)
+ax1.scatter(cover_signals, data['Close'][cover_signals], marker='o', color='purple', label='Cover Signal', s=100)
+ax1.set_title('SPY Price with Buy/Sell Signals')
+ax1.set_ylabel('Price ($)')
+ax1.legend()
+
+# Plot RSI with horizontal lines for thresholds
+ax2.plot(data.index, data['RSI'], label='RSI', color='purple')
+ax2.axhline(y=35, color='green', linestyle='--', label='Buy Threshold (35)')
+ax2.axhline(y=55, color='red', linestyle='--', label='Sell Threshold (55)')
+ax2.axhline(y=75, color='orange', linestyle='--', label='Short Threshold (75)')
+ax2.set_title('Relative Strength Index (RSI)')
+ax2.set_ylabel('RSI')
+ax2.set_ylim(0, 100)
+ax2.legend()
+
+plt.xlabel('Date')
+plt.tight_layout()
+
+# Save the plot as an image file instead of displaying it interactively.
+plt.savefig("spy_trading_strategy"
+            ".png")
