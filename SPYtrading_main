@@ -1,16 +1,27 @@
+import matplotlib
+matplotlib.use('Agg')  # Set the backend to Agg for non-interactive plotting
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')  # Use a non-interactive backend
 import matplotlib.pyplot as plt
 
-# Fetch historical market data for SPY (5 years)
-spy = yf.Ticker("SPY")
-data = spy.history(period="5y")  # Fetch 5 years of data
+# List of S&P 500 component stocks (for demonstration purposes)
+sp500_tickers = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
+sp500_tickers = sp500_tickers[0]  #take just the first table from the webpage
+
+# Initialize capital and equity curve list
+initial_capital = 1_000_000
+capital = initial_capital
+equity_curve = []  # To store portfolio value over time
+
+# Define trading parameters
+rsi_buy_threshold = 35
+rsi_sell_threshold = 55
+rsi_short_threshold = 75
+investment_percentage = 0.005  # Use 0.5% of capital
 
 
-# Calculate RSI
+# Function to calculate RSI
 def calculate_rsi(prices, period=14):
     delta = prices.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -22,89 +33,63 @@ def calculate_rsi(prices, period=14):
     return rsi
 
 
-# Calculate RSI and add it to the DataFrame
-data['RSI'] = calculate_rsi(data['Close'])
+# Iterate through each stock in the S&P 500
+for ticker in sp500_tickers:
+    print(f"Processing {ticker}...")
 
-# Initialize variables for trading logic
-initial_capital = 1000000
-capital = initial_capital
-position_size = 0
+    # Fetch historical market data for each stock (5 years)
+    stock_data = yf.Ticker(ticker).history(period="5y")
 
-# Define trading parameters
-rsi_buy_threshold = 35
-rsi_sell_threshold = 55
-rsi_short_threshold = 75
+    # Calculate RSI and add it to the DataFrame
+    stock_data['RSI'] = calculate_rsi(stock_data['Close'])
 
-# Lists to store buy/sell signals for visualization
-buy_signals = []
-sell_signals = []
-short_signals = []
-cover_signals = []
+    position_size = 0
 
-for i in range(len(data)):
-    current_rsi = data['RSI'].iloc[i]
-    current_price = data['Close'].iloc[i]
+    for i in range(len(stock_data)):
+        current_rsi = stock_data['RSI'].iloc[i]
+        current_price = stock_data['Close'].iloc[i]
 
-    # Buy condition (RSI <= 35)
-    if current_rsi <= rsi_buy_threshold and position_size == 0:
-        position_size = capital * 0.10 / current_price
-        capital -= position_size * current_price
-        buy_signals.append(data.index[i])
-        print(f"Buying {position_size} shares at {current_price} on {data.index[i]}")
+        # Buy condition (RSI <= 35)
+        if current_rsi <= rsi_buy_threshold and position_size == 0:
+            position_size = (capital * investment_percentage) / current_price
+            capital -= position_size * current_price
+            print(f"Buying {position_size:.2f} shares of {ticker} at {current_price:.2f}")
 
-    # Sell condition (RSI >= 55) when holding a position
-    elif current_rsi >= rsi_sell_threshold and position_size > 0:
-        capital += position_size * current_price
-        sell_signals.append(data.index[i])
-        print(f"Selling {position_size} shares at {current_price} on {data.index[i]}")
-        position_size = 0
+        # Sell condition (RSI >= 55) when holding a position
+        elif current_rsi >= rsi_sell_threshold and position_size > 0:
+            capital += position_size * current_price
+            print(f"Selling {position_size:.2f} shares of {ticker} at {current_price:.2f}")
+            position_size = 0
 
-    # Short condition (RSI >= 75)
-    elif current_rsi >= rsi_short_threshold and position_size == 0:
-        position_size = -capital * 0.10 / current_price
-        capital += -position_size * current_price
-        short_signals.append(data.index[i])
-        print(f"Shorting {abs(position_size)} shares at {current_price} on {data.index[i]}")
+        # Short condition (RSI >= 75)
+        elif current_rsi >= rsi_short_threshold and position_size == 0:
+            position_size = -(capital * investment_percentage) / current_price
+            capital += -position_size * current_price
+            print(f"Shorting {abs(position_size):.2f} shares of {ticker} at {current_price:.2f}")
 
-    # Cover condition (RSI <= 55) when holding a short position
-    elif current_rsi <= rsi_sell_threshold and position_size < 0:
-        capital += abs(position_size) * current_price
-        cover_signals.append(data.index[i])
-        print(f"Covers {abs(position_size)} shares at {current_price} on {data.index[i]}")
-        position_size = 0
+        # Cover condition (RSI <= 55) when holding a short position
+        elif current_rsi <= rsi_sell_threshold and position_size < 0:
+            capital += abs(position_size) * current_price
+            print(f"Covers {abs(position_size):.2f} shares of {ticker} at {current_price:.2f}")
+            position_size = 0
 
-# Final capital after trading
-final_capital = capital + (position_size * data['Close'].iloc[-1] if position_size != 0 else 0)
-print(f"Final Capital: ${final_capital:.2f}")
+        # Append the current portfolio value to equity_curve list
+        equity_curve.append(capital + (position_size * current_price if position_size != 0 else 0))
 
-# Visualization of results
+# Final capital after trading across all stocks
+final_capital = capital + (position_size * stock_data['Close'].iloc[-1] if position_size != 0 else 0)
+print(f"Final Capital after trading all stocks: ${final_capital:.2f}")
 
-# Create a figure with two subplots: one for price and one for RSI
-fig, (ax1, ax2) = plt.subplots(2, figsize=(14, 10), sharex=True)
+# Step for Visualization of the equity curve
 
-# Plot SPY price and buy/sell signals
-ax1.plot(data.index, data['Close'], label='SPY Price', color='blue')
-ax1.scatter(buy_signals, data['Close'][buy_signals], marker='^', color='green', label='Buy Signal', s=100)
-ax1.scatter(sell_signals, data['Close'][sell_signals], marker='v', color='red', label='Sell Signal', s=100)
-ax1.scatter(short_signals, data['Close'][short_signals], marker='x', color='orange', label='Short Signal', s=100)
-ax1.scatter(cover_signals, data['Close'][cover_signals], marker='o', color='purple', label='Cover Signal', s=100)
-ax1.set_title('SPY Price with Buy/Sell Signals')
-ax1.set_ylabel('Price ($)')
-ax1.legend()
-
-# Plot RSI with horizontal lines for thresholds
-ax2.plot(data.index, data['RSI'], label='RSI', color='purple')
-ax2.axhline(y=35, color='green', linestyle='--', label='Buy Threshold (35)')
-ax2.axhline(y=55, color='red', linestyle='--', label='Sell Threshold (55)')
-ax2.axhline(y=75, color='orange', linestyle='--', label='Short Threshold (75)')
-ax2.set_title('Relative Strength Index (RSI)')
-ax2.set_ylabel('RSI')
-ax2.set_ylim(0, 100)
-ax2.legend()
-
-plt.xlabel('Date')
-plt.tight_layout()
+# Create a plot for the equity curve over time
+plt.figure(figsize=(14, 7))
+plt.plot(equity_curve, label='Portfolio Equity Curve', color='blue')
+plt.title('Portfolio Equity Curve Over Time')
+plt.xlabel('Time (Days)')
+plt.ylabel('Equity ($)')
+plt.legend()
+plt.grid()
 
 # Save the plot as an image file instead of displaying it interactively.
-plt.savefig("spy_trading_strategy"
-            ".png")
+plt.savefig("portfolio_equity_curve.png")
