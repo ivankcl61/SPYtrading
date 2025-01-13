@@ -10,7 +10,7 @@ This project effectively combines several key techniques in algorithmic trading:
 Trading Logic
 The program employs a set of trading rules based on RSI thresholds to determine when to buy, sell, short, or cover positions:
 Trading Conditions:
-Buy Condition: If the RSI falls below 35, a buy order is executed.
-Sell Condition: If the RSI rises above 55 while holding a position, shares are sold.
-Short Condition: If the RSI exceeds 75 and no position is held, a short position is initiated.
-Cover Condition: If the RSI drops below 55 while holding a short position, it is covered.
+1. Buy Condition: If the RSI falls below 35, a buy order is executed.
+2. Sell Condition: If the RSI rises above 55 while holding a position, shares are sold.
+3. Short Condition: If the RSI exceeds 75 and no position is held, a short position is initiated.
+4. Cover Condition: If the RSI drops below 55 while holding a short position, it is covered.
